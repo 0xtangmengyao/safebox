@@ -610,6 +610,62 @@ func TestDecryptRejectsDanglingSymlinkOutput(t *testing.T) {
 	}
 }
 
+func TestHelpDefaultsToEnglish(t *testing.T) {
+	t.Setenv("SAFEBOX_LANG", "")
+	out, _, err := runCLI(t, nil, "help")
+	if err != nil {
+		t.Fatalf("help: %v", err)
+	}
+	if !strings.Contains(out, "age-based file and text encryption") {
+		t.Fatalf("help is not English:\n%s", out)
+	}
+}
+
+func TestHelpRespectsEnvLanguage(t *testing.T) {
+	t.Setenv("SAFEBOX_LANG", "fr")
+	out, _, err := runCLI(t, nil, "help")
+	if err != nil {
+		t.Fatalf("help: %v", err)
+	}
+	if !strings.Contains(out, "chiffrement de fichiers") {
+		t.Fatalf("help is not French:\n%s", out)
+	}
+}
+
+func TestHelpLangFlagOverridesEnv(t *testing.T) {
+	t.Setenv("SAFEBOX_LANG", "fr")
+	out, _, err := runCLI(t, nil, "--lang", "es", "help")
+	if err != nil {
+		t.Fatalf("help: %v", err)
+	}
+	if !strings.Contains(out, "cifrado de archivos") {
+		t.Fatalf("help is not Spanish:\n%s", out)
+	}
+}
+
+func TestHelpUnknownLangFallsBackToEnglish(t *testing.T) {
+	out, _, err := runCLI(t, nil, "--lang", "de", "help")
+	if err != nil {
+		t.Fatalf("help: %v", err)
+	}
+	if !strings.Contains(out, "age-based file and text encryption") {
+		t.Fatalf("unknown language did not fall back to English:\n%s", out)
+	}
+}
+
+func TestLocalizedDiagnostics(t *testing.T) {
+	stdout, stderr, err := runCLI(t, nil, "--lang", "ja", "decrypt")
+	if !errors.Is(err, errUsage) {
+		t.Fatalf("want usage error, got %v", err)
+	}
+	if stdout != "" {
+		t.Fatalf("stdout = %q", stdout)
+	}
+	if !strings.Contains(stderr, "decrypt には --identity PATH が必要です") {
+		t.Fatalf("diagnostic not localized:\n%s", stderr)
+	}
+}
+
 func assertPerm(t *testing.T, path string, want os.FileMode) {
 	t.Helper()
 	info, err := os.Stat(path)

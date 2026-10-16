@@ -1,0 +1,69 @@
+name: Bug report
+description: Report a reproducible problem with safebox
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug report.
+
+        **Do not include secrets.** Never paste private keys, plaintext,
+        ciphertext, passphrases, API keys or real user data. Use synthetic or
+        redacted examples only.
+
+        For security vulnerabilities, do **not** open a public issue; follow
+        [SECURITY.md](../blob/main/SECURITY.md) instead.
+  - type: input
+    id: version
+    attributes:
+      label: safebox version
+      description: Output of `safebox version`.
+      placeholder: v0.2.0
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Linux
+        - macOS
+        - Windows
+        - Other (describe below)
+    validations:
+      required: true
+  - type: input
+    id: arch
+    attributes:
+      label: CPU architecture
+      placeholder: amd64 / arm64
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command and flags
+      description: The exact command you ran, with any secrets redacted.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include the error message and exit status if any.
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
+    validations:
+      required: false

@@ -1,15 +1,41 @@
 # safebox
 
-`safebox` 是一个安全、可跨平台的 Go 命令行加密工具，用于加密本地文件与文本，也适合在应用之间通过管道传输密文。
+[English](README.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | [Español](README.es.md) | [Français](README.fr.md)
 
-- 只使用成熟的 [age](https://age-encryption.org) 标准库（`filippo.io/age`），**不自定义任何加密算法或协议**。
-- 密文默认使用 age 的 **armor 文本格式**（`-----BEGIN AGE ENCRYPTED FILE-----`），方便复制粘贴和管道传输。
-- 默认读写 stdin/stdout，支持 shell 与 PowerShell 管道；**明文不能作为命令行参数传入**，避免泄露到 shell 历史和进程列表。
-- 这是一个纯本地 CLI，**不会上传任何数据**。
+AI usage guide: [English](AI_GUIDE.md) | [简体中文](AI_GUIDE.zh-CN.md)
 
-## 安装与构建
+[![CI](https://github.com/0xtangmengyao/safebox/actions/workflows/ci.yml/badge.svg)](https://github.com/0xtangmengyao/safebox/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Go Reference](https://img.shields.io/badge/go-1.25%2B-00ADD8.svg)](go.mod)
 
-需要 Go 1.25 或更高版本（与当前 `filippo.io/age` 依赖的最低版本一致）。
+`safebox` is a small, safe, cross-platform Go command line tool for encrypting
+local files and text. It also works well for moving ciphertext between
+applications over a pipe.
+
+- Built only on the mature [age](https://age-encryption.org) standard library
+  (`filippo.io/age`). **No custom ciphers or protocols.**
+- Ciphertext is written as age **armor text**
+  (`-----BEGIN AGE ENCRYPTED FILE-----`) by default, so it is easy to copy,
+  paste and pipe.
+- Reads and writes stdin/stdout by default and works with both POSIX shells and
+  PowerShell. **Plaintext is never accepted as a command line argument**, so it
+  cannot leak into shell history or the process list.
+- A purely local CLI: **no telemetry, no tracking, and no runtime network
+  access of any kind.** It never connects to the internet on its own.
+
+## Highlights
+
+- Standard age/X25519 encryption and decryption via `filippo.io/age`.
+- Stream-oriented, so large files do not need to fit in memory.
+- Refuses to overwrite existing files, using `O_EXCL` to avoid races.
+- Verifies the full authentication tag before writing any plaintext.
+- Localized CLI help in English, Simplified Chinese, Japanese, Korean, Spanish
+  and French.
+
+## Install and build
+
+Go 1.25 or newer is required (the minimum version of the current
+`filippo.io/age` dependency).
 
 ```sh
 git clone https://github.com/0xtangmengyao/safebox.git safebox
@@ -17,7 +43,7 @@ cd safebox
 go build -o safebox .
 ```
 
-跨平台交叉编译（纯 Go，无需 CGO）：
+Cross-compilation (pure Go, no CGO required):
 
 ```sh
 # Linux amd64
@@ -28,132 +54,200 @@ GOOS=darwin  GOARCH=arm64 go build -o safebox-macos .
 GOOS=windows GOARCH=amd64 go build -o safebox.exe .
 ```
 
-安装到 `$GOBIN` / `%GOPATH%\bin`：
+Install into `$GOBIN` / `%GOPATH%\bin`:
 
 ```sh
 go install .
 ```
 
-### 预编译版本
+### Prebuilt binaries
 
-`dist/` 目录提供 Linux、macOS 与 Windows 的 amd64、arm64 版本；请按操作系统和 CPU 架构选择对应文件。`dist/SHA256SUMS` 用于检查下载是否损坏，但校验和本身不证明发布者身份。当前二进制尚未进行代码签名；高敏感用途建议从源码自行构建并检查来源。
+The `dist/` directory publishes Linux, macOS and Windows builds for amd64 and
+arm64. Pick the file for your operating system and CPU architecture.
+`dist/SHA256SUMS` lets you check that a download is intact, but a checksum alone
+does not prove who published it. The binaries are not code signed yet; for
+highly sensitive use, build from source and verify the source yourself.
 
-查看版本与帮助：
+Print the version and help:
 
 ```sh
 safebox version
 safebox help
 ```
 
-## 命令
+## Commands
 
-### 生成密钥对
+### Generate a key pair
 
 ```sh
 safebox keygen --identity ./keys/alice.txt
 ```
 
-- 私钥写入 `./keys/alice.txt`，向 POSIX 系统请求权限 `0600`；公钥写入 `./keys/alice.txt.pub`，请求权限 `0644`。
-- POSIX 系统上的**实际权限还会受进程 umask 限制**：umask 只会移除权限位，因此实际权限不会比请求值更宽。例如 umask `022` 下公钥为 `0644`，umask `077` 下为 `0600`；私钥请求的 `0600` 不含组/其他位，通常不受 umask 影响。
-- 在 Windows 上，文件访问权限由父目录继承的 ACL 控制；请确认父目录仅授权给预期账户。
-- 若任一文件已存在则拒绝，**绝不覆盖**。
-- 公钥（收件人）会同时打印到 stdout，便于分发。
+- The private key is written to `./keys/alice.txt` requesting mode `0600` on
+  POSIX systems; the public key is written to `./keys/alice.txt.pub` requesting
+  mode `0644`.
+- On POSIX systems the **effective permissions are also limited by your process
+  umask**. umask only removes permission bits, so the result is never wider than
+  requested. For example, with umask `022` the public key is `0644`, and with
+  umask `077` it is `0600`. The private key requests `0600`, which has no group
+  or other bits, so it is normally unaffected by umask.
+- On Windows, file access is controlled by the ACL inherited from the parent
+  directory; make sure that directory is only accessible to the intended
+  accounts.
+- If either file already exists, `safebox` refuses to continue. It **never
+  overwrites**.
+- The public key (recipient) is also printed to stdout so it is easy to share.
 
-### 加密
+### Encrypt
 
-默认从 stdin 读入明文，向 stdout 输出 armor 密文：
+By default, plaintext is read from stdin and armor ciphertext is written to
+stdout:
 
 ```sh
-safebox encrypt --recipient age1... < plain.txt > secret.age
+safebox encrypt --recipient age1... < plain.txt
 ```
 
-可以重复指定多个收件人（任意一个私钥都能解密）：
+You can pass several recipients; any matching private key can decrypt:
 
 ```sh
-safebox encrypt --recipient age1aaa --recipient age1bbb < plain.txt > secret.age
+safebox encrypt --recipient age1aaa --recipient age1bbb < plain.txt
 ```
 
-也可以使用文件路径（输出文件权限 `0600`，且**拒绝覆盖**已有文件）：
+You can also use file paths. Output files are created with mode `0600` and are
+**never overwritten**:
 
 ```sh
 safebox encrypt --recipient age1... --in plain.txt --out secret.age
 ```
 
-POSIX 系统输出文件权限请求为 `0600`（同样受 umask 限制，只会更窄、不会更宽）；Windows 使用父目录继承的 ACL。
+On POSIX systems the requested output mode is `0600` (again limited by umask,
+only narrower, never wider). On Windows, the inherited parent-directory ACL
+applies.
 
-### 解密
+> Shell redirection such as `> file` is handled by your shell and may truncate an existing file before `safebox` starts. Use `--out PATH` to save through `safebox` and retain its no-overwrite protection.
 
-默认从 stdin 读入密文，向 stdout 输出明文：
+### Decrypt
+
+By default, ciphertext is read from stdin and plaintext is written to stdout:
 
 ```sh
-safebox decrypt --identity ./keys/alice.txt < secret.age > plain.txt
+safebox decrypt --identity ./keys/alice.txt < secret.age
 ```
 
-文件方式（POSIX 系统输出权限 `0600`，Windows 使用继承的 ACL，且**拒绝覆盖**）：
+File form (POSIX output mode `0600`, Windows inherited ACL, **never
+overwrites**):
 
 ```sh
 safebox decrypt --identity ./keys/alice.txt --in secret.age --out plain.txt
 ```
 
-身份文件采用 age 标准解析：支持 age-keygen 风格的文件，忽略空行与 `#` 注释行（例如 `# created: ...`、`# public key: age1...`），并允许同一文件内包含**多个身份**，任一匹配身份都能解密。
+Identity files are parsed with the standard age rules: age-keygen style files
+are accepted, blank lines and `#` comment lines (such as `# created: ...` and
+`# public key: age1...`) are ignored, and a single file may contain **multiple
+identities**; any matching identity can decrypt.
 
-解密会先将明文流式暂存到系统临时目录中权限受限的临时文件，完整校验认证标签后才写出；认证失败时不会输出任何明文，也不会因文件过大而占用同等规模的内存。临时文件在退出时删除，但删除**不等于安全擦除**；临时目录所在磁盘、交换分区或备份仍可能留下数据。输入同时支持 armor 文本和二进制 age 格式。
+Decryption first spools plaintext into a permission-restricted temporary file in
+the system temporary directory and only writes it out after the complete
+authentication tag has been verified. On authentication failure, no plaintext is
+emitted, and memory use does not grow with the file size. The temporary file is
+removed on exit, but **removal is not secure erasure**: the disk holding the
+temporary directory, swap, or backups may still retain data. Both armor text and
+binary age input are accepted.
 
-若 `--out` 指向已存在的路径，会在**解密和创建临时明文之前**就拒绝；该存在性检测不跟随符号链接，因此悬空符号链接同样会被视为已存在而拒绝，最终写出仍使用 `O_EXCL` 防止竞态。已有的 `--out` 目标在任何情况下都不会被覆盖或删除；但若本次操作已开始创建新文件后遇到写入失败，会清理掉本次产生的部分输出。
+If `--out` points at an existing path, `safebox` refuses before decrypting or
+creating any temporary plaintext. That existence check does not follow symbolic
+links, so a dangling symlink also counts as existing and is rejected; the final
+write still uses `O_EXCL` as the authoritative guard. An existing `--out` target
+is never overwritten or deleted. If this run created a new file and then hit a
+write failure, the partial output from this run is cleaned up.
 
-## 完整示例
+## Examples
 
-### 文本管道（Linux / macOS / Git Bash）
+### Text over a pipe (Linux / macOS / Git Bash)
 
 ```sh
-printf 'hello safebox\n' | safebox encrypt --recipient "$(cat alice.txt.pub)" > msg.age
-safebox decrypt --identity alice.txt < msg.age
+printf 'hello safebox\n' | safebox encrypt --recipient AGE1... | safebox decrypt --identity alice.txt
 ```
 
-### 文件
+### Files
 
 ```sh
 safebox keygen --identity alice.txt
-safebox encrypt --recipient "$(cat alice.txt.pub)" --in report.pdf --out report.pdf.age
+safebox encrypt --recipient AGE1... --in report.pdf --out report.pdf.age
 safebox decrypt --identity alice.txt --in report.pdf.age --out report.pdf
 ```
 
-### 应用之间传输（管道）
+### Moving ciphertext between applications
 
 ```sh
-# 应用 A 生成密文写入管道
+# Application A produces ciphertext into the pipe
 producer-app | safebox encrypt --recipient age1... | consumer-app
 ```
 
 ### Windows PowerShell
 
 ```powershell
-# 生成密钥
+# Generate a key pair
 safebox keygen --identity .\keys\alice.txt
 
-# 文件方式避免 PowerShell 文本管道改写编码/换行
+# Use file mode to avoid PowerShell rewriting text encoding or newlines
 safebox encrypt --recipient (Get-Content -Raw .\keys\alice.txt.pub).Trim() `
     --in .\plain.txt --out .\secret.age
 
-# 解密
+# Decrypt
 safebox decrypt --identity .\keys\alice.txt `
     --in .\secret.age --out .\plain.out.txt
 ```
 
-> 注意：文件模式不会经过 PowerShell 的文本对象管道，适合任意文件。若直接在终端输入敏感文本作为 `echo`/`printf` 命令内容，shell 历史仍可能记录它；敏感文本请从文件、剪贴板工具或上游应用经 stdin 传入。不要把明文或私钥拼进 `safebox` 命令行。
+> Note: file mode does not pass through PowerShell's text object pipeline, so it
+> is suitable for arbitrary files. If you type sensitive text directly into an
+> `echo`/`printf` command, the shell history may still record it. Feed sensitive
+> text from a file, a clipboard tool, or an upstream application via stdin. Never
+> put plaintext or a private key on the `safebox` command line.
 
-## 安全边界
+## Language and localization
 
-- **加密算法**：使用 age / X25519 标准协议，密钥与密文格式由 `filippo.io/age` 负责，本工具不发明密码学。
-- **私钥保护**：POSIX 系统私钥文件以 `0600` 创建；Windows 由父目录 ACL 控制。`safebox` 绝不打印私钥。请自行妥善保护私钥文件，不要在多人共用或未加密的磁盘上存放。
-- **临时明文**：解密时会使用系统临时目录下权限受限的临时文件完成整流校验；用完后删除，但不保证从 SSD、交换分区、备份或快照中安全擦除。需要高保密时，请确保临时目录与交换空间位于可信的加密存储上。
-- **不可恢复**：私钥一旦丢失，密文**无法恢复**；没有后门、没有找回机制。
-- **元数据**：加密只保护文件内容，age 不隐藏文件大小、时间、文件名等元数据，也不隐藏流量特征。
-- **终端与剪贴板**：通过终端复制粘贴密钥或明文时，内容可能残留在终端历史、回滚缓冲或剪贴板中。
-- **口令熵**：本工具使用公钥加密，不依赖口令；如需口令加密请勿使用低熵口令。
-- **本地工具**：`safebox` 是一个本地 CLI，不联网、不上传数据、不提供服务端功能。
+The CLI help and diagnostics are available in English (`en`), Simplified
+Chinese (`zh-CN`), Japanese (`ja`), Korean (`ko`), Spanish (`es`) and French
+(`fr`). The default is English.
 
-## 开发与测试
+Switch language explicitly with the global `--lang` flag or the `SAFEBOX_LANG`
+environment variable:
+
+```sh
+safebox --lang ja help      # Japanese help
+SAFEBOX_LANG=fr safebox decrypt   # French diagnostics
+```
+
+`--lang` takes precedence over `SAFEBOX_LANG`, and unknown values fall back to
+English. For guidance on using your own AI assistant to help with `safebox`,
+see the [AI usage guide](AI_GUIDE.md) ([简体中文](AI_GUIDE.zh-CN.md)).
+
+## Security boundaries
+
+- **Cryptography**: standard age / X25519 via `filippo.io/age`. `safebox` invents
+  no cryptography of its own.
+- **Private keys**: on POSIX systems the private key file is created with `0600`;
+  on Windows it is governed by the parent-directory ACL. `safebox` never prints
+  the private key. Protect the key file yourself and do not store it on shared or
+  unencrypted disks.
+- **Temporary plaintext**: decryption uses a permission-restricted temporary file
+  to verify the whole stream. It is deleted afterwards, but is not guaranteed to
+  be securely erased from SSDs, swap, backups or snapshots. For high
+  confidentiality, keep the temporary directory and swap on trusted encrypted
+  storage.
+- **No recovery**: if you lose a private key, the ciphertext **cannot be
+  recovered**. There is no backdoor and no recovery mechanism.
+- **Metadata**: encryption protects only file contents. age does not hide file
+  size, timestamps or file names, and does not hide traffic patterns.
+- **Terminals and clipboards**: copying keys or plaintext through a terminal can
+  leave them in terminal history, scrollback or the clipboard.
+- **Passphrase entropy**: this tool uses public-key encryption and does not rely
+  on passphrases; do not use low-entropy passphrases for passphrase encryption.
+- **Local tool**: `safebox` is a local CLI with no runtime network or telemetry
+  features of any kind.
+
+## Development and testing
 
 ```sh
 gofmt -l .
@@ -161,8 +255,31 @@ go vet ./...
 go test ./...
 ```
 
-测试覆盖密钥生成与文件权限（按平台适配）、stdin/stdout 与文件往返、多收件人、密文被篡改或私钥错误时失败且不泄露明文、以及拒绝覆盖已有文件。
+The test suite covers key generation and file permissions (adapted per
+platform), stdin/stdout and file round trips, multiple recipients, failure
+without plaintext leakage when ciphertext is tampered with or the wrong key is
+used, and refusal to overwrite existing files. It also checks translation
+completeness across every shipped language.
 
-## 许可证
+Continuous integration builds and tests every push and pull request, runs
+`gofmt`, `go vet` and `go test`, and cross-compiles for Linux, macOS and Windows
+without leaving artifacts in the repository.
 
-MIT，见 [LICENSE](LICENSE)。
+## Project metadata (suggested)
+
+These GitHub topics are suggestions you can set in the repository settings; this
+repository does not change online metadata automatically:
+
+`age`, `encryption`, `cryptography`, `x25519`, `cli`, `golang`, `privacy`,
+`command-line-tool`, `file-encryption`, `cross-platform`
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how to build, test and submit
+changes. Please report vulnerabilities privately as described in
+[SECURITY.md](SECURITY.md). This project follows the
+[Contributor Covenant](CODE_OF_CONDUCT.md).
+
+## License
+
+MIT. See [LICENSE](LICENSE).

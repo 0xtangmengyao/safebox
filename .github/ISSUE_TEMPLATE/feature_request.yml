@@ -1,0 +1,31 @@
+name: Feature request
+description: Suggest an improvement to safebox
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion. Please keep in mind the project's
+        constraints: standard `filippo.io/age` only (no custom cryptography),
+        unchanged `keygen`/`encrypt`/`decrypt` semantics, and offline-by-default
+        behavior.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What are you trying to do, and what is missing today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false

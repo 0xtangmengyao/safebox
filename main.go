@@ -25,7 +25,7 @@ import (
 )
 
 // version is the safebox release reported by the "version" command.
-const version = "v0.1.0"
+const version = "v0.2.0"
 
 const armorHeader = "-----BEGIN AGE ENCRYPTED FILE-----"
 
@@ -42,7 +42,7 @@ func main() {
 		// The command that rejected the command line already wrote a
 		// diagnostic and the relevant usage text to stderr.
 	case errors.Is(err, context.Canceled):
-		fmt.Fprintln(os.Stderr, "safebox: interrupted")
+		fmt.Fprintln(os.Stderr, "safebox: "+tr(effectiveLanguage(), "diag.interrupted"))
 	default:
 		fmt.Fprintln(os.Stderr, "safebox: "+err.Error())
 	}
@@ -68,56 +68,83 @@ func exitCode(err error) int {
 var errUsage = errors.New("usage error")
 
 func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	lang, args := extractLanguage(args)
 	if len(args) == 0 {
-		return printUsageError(stderr, func() { usage(stderr) }, "missing command")
+		return printUsageError(stderr, func() { usage(stderr, lang) }, tr(lang, "diag.missingCommand"))
 	}
 
 	switch args[0] {
 	case "keygen":
-		return cmdKeygen(ctx, args[1:], stdout, stderr)
+		return cmdKeygen(ctx, args[1:], stdout, stderr, lang)
 	case "encrypt":
-		return cmdEncrypt(ctx, args[1:], stdin, stdout, stderr)
+		return cmdEncrypt(ctx, args[1:], stdin, stdout, stderr, lang)
 	case "decrypt":
-		return cmdDecrypt(ctx, args[1:], stdin, stdout, stderr)
+		return cmdDecrypt(ctx, args[1:], stdin, stdout, stderr, lang)
 	case "version", "--version", "-version":
 		fmt.Fprintf(stdout, "safebox %s\n", version)
 		return nil
 	case "help", "-h", "-help", "--help":
-		usage(stdout)
+		usage(stdout, lang)
 		return nil
 	default:
-		return printUsageError(stderr, func() { usage(stderr) }, "unknown command %q", args[0])
+		return printUsageError(stderr, func() { usage(stderr, lang) }, tr(lang, "diag.unknownCommand", args[0]))
 	}
+}
+
+// extractLanguage resolves the UI language and strips an optional global
+// --lang flag from the front of args. The flag is only recognized before the
+// command, so subcommand flags and their semantics stay exactly as before.
+func extractLanguage(args []string) (string, []string) {
+	lang := effectiveLanguage()
+	for len(args) > 0 {
+		a := args[0]
+		switch {
+		case a == "--lang" || a == "-lang":
+			if len(args) < 2 {
+				return lang, args
+			}
+			lang = normalizeLanguage(args[1])
+			args = args[2:]
+		case strings.HasPrefix(a, "--lang="):
+			lang = normalizeLanguage(strings.TrimPrefix(a, "--lang="))
+			args = args[1:]
+		case strings.HasPrefix(a, "-lang="):
+			lang = normalizeLanguage(strings.TrimPrefix(a, "-lang="))
+			args = args[1:]
+		default:
+			return lang, args
+		}
+	}
+	return lang, args
 }
 
 // printUsageError writes a single actionable diagnostic line followed by the
 // relevant usage text to w, then returns errUsage so main exits with status 2.
-// The diagnostic comes first so it stays visible when usage is long.
-func printUsageError(w io.Writer, usageFn func(), format string, args ...any) error {
-	fmt.Fprintln(w, "safebox: "+fmt.Sprintf(format, args...))
+// The diagnostic comes first so it stays visible when usage is long. message is
+// already localized and formatted by the caller.
+func printUsageError(w io.Writer, usageFn func(), message string) error {
+	fmt.Fprintln(w, "safebox: "+message)
 	if usageFn != nil {
 		usageFn()
 	}
 	return errUsage
 }
 
-func usage(w io.Writer) {
-	fmt.Fprint(w, `safebox `+version+` - age-based file and text encryption
-
-Usage:
-  safebox <command> [flags]
-
-Commands:
-  keygen   Generate an X25519 identity and its public recipient
-  encrypt  Encrypt stdin (or --in) to armor text on stdout (or --out)
-  decrypt  Decrypt armor/binary age input to stdout (or --out)
-  version  Print the version
-  help     Print this help
-
-Run "safebox <command> -h" for command specific flags.
-
-Plaintext is never accepted as a command line argument: pipe it in via stdin
-to avoid leaking it to shell history and the process list.`)
+func usage(w io.Writer, lang string) {
+	fmt.Fprintf(w, "%s\n\n%s\n%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n\n%s\n\n%s\n%s\n",
+		tr(lang, "usage.title", version),
+		tr(lang, "usage.header"),
+		tr(lang, "usage.synopsis"),
+		tr(lang, "usage.commands"),
+		tr(lang, "usage.keygen"),
+		tr(lang, "usage.encrypt"),
+		tr(lang, "usage.decrypt"),
+		tr(lang, "usage.version"),
+		tr(lang, "usage.help"),
+		tr(lang, "usage.commandHelp"),
+		tr(lang, "usage.plaintext"),
+		tr(lang, "usage.lang"),
+	)
 }
 
 type stringsFlag []string
@@ -143,14 +170,14 @@ func parseCommandFlags(fs *flag.FlagSet, args []string) (help bool, err error) {
 	return false, nil
 }
 
-func cmdKeygen(_ context.Context, args []string, stdout, stderr io.Writer) error {
+func cmdKeygen(_ context.Context, args []string, stdout, stderr io.Writer, lang string) error {
 	fs := flag.NewFlagSet("keygen", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	identity := fs.String("identity", "", "path of the X25519 private key file to create (0600)")
+	identity := fs.String("identity", "", tr(lang, "flag.keygen.identity"))
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, "Usage: safebox keygen --identity PATH")
-		fmt.Fprintln(stderr, "\nWrites PATH (private key, 0600) and PATH.pub (public key, 0644).")
-		fmt.Fprintln(stderr, "Neither file is ever overwritten.")
+		fmt.Fprintln(stderr, tr(lang, "keygen.usageLine"))
+		fmt.Fprintln(stderr)
+		fmt.Fprintln(stderr, tr(lang, "keygen.detail"))
 		fs.PrintDefaults()
 	}
 	help, err := parseCommandFlags(fs, args)
@@ -161,10 +188,10 @@ func cmdKeygen(_ context.Context, args []string, stdout, stderr io.Writer) error
 		return nil
 	}
 	if fs.NArg() > 0 {
-		return printUsageError(stderr, fs.Usage, "keygen: unexpected argument %q", fs.Arg(0))
+		return printUsageError(stderr, fs.Usage, tr(lang, "diag.unexpectedArgument", "keygen", fs.Arg(0)))
 	}
 	if *identity == "" {
-		return printUsageError(stderr, fs.Usage, "keygen requires --identity PATH")
+		return printUsageError(stderr, fs.Usage, tr(lang, "diag.keygen.requiresIdentity"))
 	}
 	if err := os.MkdirAll(filepath.Dir(*identity), 0o700); err != nil {
 		return fmt.Errorf("creating key directory: %w", err)
@@ -196,17 +223,17 @@ func cmdKeygen(_ context.Context, args []string, stdout, stderr io.Writer) error
 	return nil
 }
 
-func cmdEncrypt(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+func cmdEncrypt(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, lang string) error {
 	fs := flag.NewFlagSet("encrypt", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	var recipients stringsFlag
-	fs.Var(&recipients, "recipient", "recipient public key (age1...); may be repeated")
-	in := fs.String("in", "", "input file (default stdin)")
-	out := fs.String("out", "", "output file (default stdout); never overwritten")
+	fs.Var(&recipients, "recipient", tr(lang, "flag.encrypt.recipient"))
+	in := fs.String("in", "", tr(lang, "flag.encrypt.in"))
+	out := fs.String("out", "", tr(lang, "flag.encrypt.out"))
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, "Usage: safebox encrypt --recipient AGE1... [--recipient ...] [--in PATH] [--out PATH]")
-		fmt.Fprintln(stderr, "\nReads plaintext from stdin unless --in is given. Writes armored age text.")
-		fmt.Fprintln(stderr, "Plaintext must not be passed as an argument.")
+		fmt.Fprintln(stderr, tr(lang, "encrypt.usageLine"))
+		fmt.Fprintln(stderr)
+		fmt.Fprintln(stderr, tr(lang, "encrypt.detail"))
 		fs.PrintDefaults()
 	}
 	help, err := parseCommandFlags(fs, args)
@@ -217,10 +244,10 @@ func cmdEncrypt(ctx context.Context, args []string, stdin io.Reader, stdout, std
 		return nil
 	}
 	if fs.NArg() > 0 {
-		return printUsageError(stderr, fs.Usage, "encrypt: unexpected argument %q", fs.Arg(0))
+		return printUsageError(stderr, fs.Usage, tr(lang, "diag.unexpectedArgument", "encrypt", fs.Arg(0)))
 	}
 	if len(recipients) == 0 {
-		return printUsageError(stderr, fs.Usage, "encrypt requires at least one --recipient")
+		return printUsageError(stderr, fs.Usage, tr(lang, "diag.encrypt.requiresRecipient"))
 	}
 
 	recips := make([]age.Recipient, 0, len(recipients))
@@ -268,16 +295,16 @@ func cmdEncrypt(ctx context.Context, args []string, stdin io.Reader, stdout, std
 	return nil
 }
 
-func cmdDecrypt(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+func cmdDecrypt(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, lang string) error {
 	fs := flag.NewFlagSet("decrypt", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	identity := fs.String("identity", "", "path of the X25519 private key file")
-	in := fs.String("in", "", "input file (default stdin)")
-	out := fs.String("out", "", "output file (default stdout); never overwritten")
+	identity := fs.String("identity", "", tr(lang, "flag.decrypt.identity"))
+	in := fs.String("in", "", tr(lang, "flag.decrypt.in"))
+	out := fs.String("out", "", tr(lang, "flag.decrypt.out"))
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, "Usage: safebox decrypt --identity PATH [--in PATH] [--out PATH]")
-		fmt.Fprintln(stderr, "\nAccepts armored or binary age input. Plaintext is verified in full")
-		fmt.Fprintln(stderr, "before anything is written, so a failure never leaks partial output.")
+		fmt.Fprintln(stderr, tr(lang, "decrypt.usageLine"))
+		fmt.Fprintln(stderr)
+		fmt.Fprintln(stderr, tr(lang, "decrypt.detail"))
 		fs.PrintDefaults()
 	}
 	help, err := parseCommandFlags(fs, args)
@@ -288,10 +315,10 @@ func cmdDecrypt(ctx context.Context, args []string, stdin io.Reader, stdout, std
 		return nil
 	}
 	if fs.NArg() > 0 {
-		return printUsageError(stderr, fs.Usage, "decrypt: unexpected argument %q", fs.Arg(0))
+		return printUsageError(stderr, fs.Usage, tr(lang, "diag.unexpectedArgument", "decrypt", fs.Arg(0)))
 	}
 	if *identity == "" {
-		return printUsageError(stderr, fs.Usage, "decrypt requires --identity PATH")
+		return printUsageError(stderr, fs.Usage, tr(lang, "diag.decrypt.requiresIdentity"))
 	}
 	// Reject an existing --out target before doing any decryption or creating
 	// the temporary plaintext file. openOutput's O_EXCL remains the

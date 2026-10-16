@@ -1,0 +1,18 @@
+# Build output
+/safebox
+/safebox.exe
+/safebox-linux
+/safebox-macos
+/safebox-windows.exe
+*.test
+*.out
+
+# Local key material must never be committed
+*.pub
+keys/
+*.age
+
+# Editor / OS cruft
+.DS_Store
+Thumbs.db
+*.swp
